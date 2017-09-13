@@ -76,11 +76,12 @@ namespace ReadBarCode_Web
 
             try
             {
-                fn_share.systemLog(filename, "-------------------------------------------------------------\r\n");
                 sql = "select * from list_filerecoginze where status='未关联' order by times";
                 dt = DBMgr.GetDataTable(sql);
                 foreach (DataRow dr in dt.Rows)
                 {
+                    fn_share.systemLog(filename, "-------------------------------------------------------------\r\n");
+
                     //先置空
                     guid = ""; barcode = "";
                     id = ""; filepath = ""; originalname = ""; filesuffix = "";
