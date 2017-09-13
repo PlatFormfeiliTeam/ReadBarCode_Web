@@ -218,10 +218,13 @@ namespace ReadBarCode_Web
                                 DBMgr.ExecuteNonQuery(sql_insert, conn);
                             }
 
-                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='已关联',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString() + "' where id=" + id, conn);
+                            //关联成功 ，文件挪到自动上传到文件服务器的目录，并删除原始目录的文件、修改原始路径为服务器新路径
+                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='已关联',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString() 
+                                + "',filepath='/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1)+"' where id=" + id, conn);
                             ot.Commit();
 
                             File.Copy(direc_pdf + dr["FILEPATH"], direc_pdf + @"/FileUpload/file/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
+                            File.Delete(direc_pdf + dr["FILEPATH"]);
 
                         }
                         catch (Exception ex)
