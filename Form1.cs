@@ -94,7 +94,7 @@ namespace ReadBarCode_Web
                     FileInfo fi = new FileInfo(direc_pdf + filepath);
 
                     //---------------------------------------------------------------------------------------------------------------------
-                   //再次判断状态，如果被删除，或者状态不是未关联，则跳到下一笔记录；否则 立刻更新为关联中
+                    //再次判断状态，如果被删除，或者状态不是未关联，则跳到下一笔记录；否则 立刻更新为关联中
                     DataTable dt_status = DBMgr.GetDataTable("select * from list_filerecoginze where id=" + id);
                     if (dt_status == null) { continue; }
                     if (dt_status.Rows.Count <= 0) { continue; }
@@ -108,138 +108,140 @@ namespace ReadBarCode_Web
                     }
                     DateTime d1 = DateTime.Now;
                     guid = Guid.NewGuid().ToString(); string imagefileName = direc_img + guid + ".Jpeg";
-                    ConvertPDF.pdfToPic(direc_pdf + dr["FILEPATH"], direc_img, guid, 1, 1, ImageFormat.Jpeg);
+                    ConvertPDF.pdfToPic(direc_pdf + filepath, direc_img, guid, 1, 1, ImageFormat.Jpeg);
                     fn_share.systemLog(filename, "=== ConvertToImage——" + (DateTime.Now - d1) + "\r\n");
 
-                    if (File.Exists(imagefileName))
+                    if (!File.Exists(imagefileName))//转图片失败
                     {
-                        BarcodeDecoder barcodeDecoder = new BarcodeDecoder();
-                        Image primaryImage = Image.FromFile(imagefileName);
-                        Bitmap pImg = MakeGrayscale3((Bitmap)primaryImage);
-                        Dictionary<DecodeOptions, object> decodingOptions = new Dictionary<DecodeOptions, object>();
-                        List<BarcodeFormat> possibleFormats = new List<BarcodeFormat>(10);
-                        possibleFormats.Add(BarcodeFormat.Code128);
-                        possibleFormats.Add(BarcodeFormat.EAN13);
-                        decodingOptions.Add(DecodeOptions.TryHarder, true);
-                        decodingOptions.Add(DecodeOptions.PossibleFormats, possibleFormats);
-                        DateTime d2 = DateTime.Now;
-                        Result decodedResult = barcodeDecoder.Decode(pImg, decodingOptions);
-                        fn_share.systemLog(filename, "===解析时长——" + (DateTime.Now - d2) + "\r\n");
+                        DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败' where id=" + id);
+                        continue;
+                    }
 
-                        if (decodedResult != null)//有些PDF文件并无条形码
-                        {
-                            barcode = decodedResult.Text;
-                        }
-                        //barcode = "17041000208";//测试用的单号
+                    BarcodeDecoder barcodeDecoder = new BarcodeDecoder();
+                    Image primaryImage = Image.FromFile(imagefileName);
+                    Bitmap pImg = MakeGrayscale3((Bitmap)primaryImage);
+                    Dictionary<DecodeOptions, object> decodingOptions = new Dictionary<DecodeOptions, object>();
+                    List<BarcodeFormat> possibleFormats = new List<BarcodeFormat>(10);
+                    possibleFormats.Add(BarcodeFormat.Code128);
+                    possibleFormats.Add(BarcodeFormat.EAN13);
+                    decodingOptions.Add(DecodeOptions.TryHarder, true);
+                    decodingOptions.Add(DecodeOptions.PossibleFormats, possibleFormats);
+                    DateTime d2 = DateTime.Now;
+                    Result decodedResult = barcodeDecoder.Decode(pImg, decodingOptions);
+                    fn_share.systemLog(filename, "===解析时长——" + (DateTime.Now - d2) + "\r\n");
 
-                        if (barcode == "")//条码解析失败，或无条码 都纳入 关联失败
-                        {
-                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败' where id=" + id);
-                            continue;
-                        }
-                        //-------------------------------------------------
-                        //根据识别出的订单号，查询是否存在此订单
-                        dt_order = DBMgr.GetDataTable("select * from list_order a where a.code='" + barcode + "' and a.ISINVALID=0");
-                        if (dt_order == null)
-                        {
-                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败',ordercode='" + barcode + "' where id=" + id);
-                            continue;
-                        }
-                        if (dt_order.Rows.Count <= 0)
-                        {
-                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败',ordercode='" + barcode + "' where id=" + id);
-                            continue;
-                        }
+                    if (decodedResult != null)//有些PDF文件并无条形码
+                    {
+                        barcode = decodedResult.Text;
+                    }
+                    //barcode = "17041000208";//测试用的单号
 
-                        //-------------------------------------------------识别成条码，关联到订单表
+                    if (barcode == "")//条码解析失败，或无条码 都纳入 关联失败
+                    {
+                        DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败' where id=" + id);
+                        continue;
+                    }
+                    //-------------------------------------------------
+                    //根据识别出的订单号，查询是否存在此订单
+                    dt_order = DBMgr.GetDataTable("select * from list_order a where a.code='" + barcode + "' and a.ISINVALID=0");
+                    if (dt_order == null)
+                    {
+                        DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败',ordercode='" + barcode + "' where id=" + id);
+                        continue;
+                    }
+                    if (dt_order.Rows.Count <= 0)
+                    {
+                        DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败',ordercode='" + barcode + "' where id=" + id);
+                        continue;
+                    }
+
+                    //-------------------------------------------------识别成条码，关联到订单表
+                    associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString();
+
+                    OracleConnection conn = null;
+                    OracleTransaction ot = null;
+                    conn = DBMgr.getOrclCon();
+                    try
+                    {
+                        conn.Open();
+                        ot = conn.BeginTransaction();
+
                         associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString();
-
-                        OracleConnection conn = null;
-                        OracleTransaction ot = null;
-                        conn = DBMgr.getOrclCon();
-                        try
+                        if (associateno != "")//两单关联
                         {
-                            conn.Open();
-                            ot = conn.BeginTransaction();
+                            sql_insert = @"insert into LIST_ATTACHMENT (id
+                                                ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
+                                                ,filesuffix,IETYPE) 
+                                            values(List_Attachment_Id.Nextval
+                                                ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
+                                                ,'{6}','{7}')";
+                            sql_insert = string.Format(sql_insert
+                                    , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
+                                    , filesuffix, dt_order.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
+                            DBMgr.ExecuteNonQuery(sql_insert, conn);
 
-                            associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString();
+                            DataTable dt_asOrder = new DataTable();
                             if (associateno != "")//两单关联
                             {
-                                sql_insert = @"insert into LIST_ATTACHMENT (id
-                                                ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
-                                                ,filesuffix,IETYPE) 
-                                            values(List_Attachment_Id.Nextval
-                                                ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
-                                                ,'{6}','{7}')";
-                                sql_insert = string.Format(sql_insert
-                                        , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
-                                        , filesuffix, dt_order.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
-                                DBMgr.ExecuteNonQuery(sql_insert, conn);
+                                dt_asOrder = DBMgr.GetDataTable("select * from list_order a where a.ISINVALID=0 and ASSOCIATENO='" + associateno + "' and code!='" + barcode + "'");
+                            }
+                            if (dt_asOrder == null)
+                            {
 
-                                DataTable dt_asOrder = new DataTable();
-                                if (associateno != "")//两单关联
-                                {
-                                    dt_asOrder = DBMgr.GetDataTable("select * from list_order a where a.ISINVALID=0 and ASSOCIATENO='" + associateno + "' and code!='" + barcode + "'");
-                                }
-                                if (dt_asOrder == null)
-                                {
+                            }
 
-                                }
-
-                                else if (dt_asOrder.Rows.Count < 0)
-                                {
-
-                                }
-                                else
-                                {
-                                    sql_insert = @"insert into LIST_ATTACHMENT (id
-                                                ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
-                                                ,filesuffix,IETYPE) 
-                                            values(List_Attachment_Id.Nextval
-                                                ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
-                                                ,'{6}','{7}')";
-                                    sql_insert = string.Format(sql_insert
-                                            , "/44/" + dt_asOrder.Rows[0]["code"].ToString() + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", dt_asOrder.Rows[0]["code"].ToString(), fi.Length, "订单文件"
-                                            , filesuffix, dt_asOrder.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
-                                    DBMgr.ExecuteNonQuery(sql_insert, conn);
-                                }
+                            else if (dt_asOrder.Rows.Count < 0)
+                            {
 
                             }
                             else
                             {
                                 sql_insert = @"insert into LIST_ATTACHMENT (id
                                                 ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
+                                                ,filesuffix,IETYPE) 
+                                            values(List_Attachment_Id.Nextval
+                                                ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
+                                                ,'{6}','{7}')";
+                                sql_insert = string.Format(sql_insert
+                                        , "/44/" + dt_asOrder.Rows[0]["code"].ToString() + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", dt_asOrder.Rows[0]["code"].ToString(), fi.Length, "订单文件"
+                                        , filesuffix, dt_asOrder.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
+                                DBMgr.ExecuteNonQuery(sql_insert, conn);
+                            }
+
+                        }
+                        else
+                        {
+                            sql_insert = @"insert into LIST_ATTACHMENT (id
+                                                ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
                                                 ,filesuffix) 
                                             values(List_Attachment_Id.Nextval
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
                                                 ,'{6}')";
-                                sql_insert = string.Format(sql_insert
-                                        , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
-                                        , filesuffix);
-                                DBMgr.ExecuteNonQuery(sql_insert, conn);
-                            }
-
-                            //关联成功 ，文件挪到自动上传到文件服务器的目录，并删除原始目录的文件、修改原始路径为服务器新路径
-                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='已关联',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString() 
-                                + "',filepath='/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1)+"' where id=" + id, conn);
-                            ot.Commit();
-
-                            fi.CopyTo(direc_pdf + @"/FileUpload/file/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
-                            fi.Delete();
-
+                            sql_insert = string.Format(sql_insert
+                                    , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
+                                    , filesuffix);
+                            DBMgr.ExecuteNonQuery(sql_insert, conn);
                         }
-                        catch (Exception ex)
-                        {
-                            ot.Rollback();
-                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败' where id=" + id);
-                            fn_share.systemLog(filename, "异常，id:" + id + ",filepath:" + filepath + "\r\n识别条码失败：" + ex.Message + "\r\n");
-                        }
-                        finally
-                        {
-                            conn.Close();
-                        }
+
+                        //关联成功 ，文件挪到自动上传到文件服务器的目录，并删除原始目录的文件、修改原始路径为服务器新路径
+                        DBMgr.ExecuteNonQuery("update list_filerecoginze set status='已关联',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString()
+                            + "',filepath='/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1) + "' where id=" + id, conn);
+                        ot.Commit();
+
+                        fi.CopyTo(direc_pdf + @"/FileUpload/file/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
+                        fi.Delete();
+
                     }
-
+                    catch (Exception ex)
+                    {
+                        ot.Rollback();
+                        DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败' where id=" + id);
+                        fn_share.systemLog(filename, "异常，id:" + id + ",filepath:" + filepath + "\r\n识别条码失败：" + ex.Message + "\r\n");
+                    }
+                    finally
+                    {
+                        conn.Close();
+                    }
                 }
             }
             catch (Exception ex)
