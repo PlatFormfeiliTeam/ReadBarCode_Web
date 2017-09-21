@@ -91,7 +91,7 @@ namespace ReadBarCode_Web
                     id = dr["ID"].ToString();
                     filepath = dr["FILEPATH"].ToString();
                     originalname = dr["FILENAME"].ToString(); filesuffix = originalname.Substring(originalname.LastIndexOf(".") + 1).ToUpper();
-                    FileInfo fi = new FileInfo(direc_pdf + dr["FILEPATH"]);
+                    FileInfo fi = new FileInfo(direc_pdf + filepath);
 
                     //---------------------------------------------------------------------------------------------------------------------
                    //再次判断状态，如果被删除，或者状态不是未关联，则跳到下一笔记录；否则 立刻更新为关联中
@@ -152,11 +152,7 @@ namespace ReadBarCode_Web
                         }
 
                         //-------------------------------------------------识别成条码，关联到订单表
-                        associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString(); DataTable dt_asOrder = new DataTable();
-                        if (associateno != "")//两单关联
-                        {
-                            dt_asOrder = DBMgr.GetDataTable("select * from list_order a where a.ISINVALID=0 and ASSOCIATENO='" + associateno + "' and code!='" + barcode + "'");
-                        }
+                        associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString();
 
                         OracleConnection conn = null;
                         OracleTransaction ot = null;
@@ -179,7 +175,12 @@ namespace ReadBarCode_Web
                                         , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
                                         , filesuffix, dt_order.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
                                 DBMgr.ExecuteNonQuery(sql_insert, conn);
-                               
+
+                                DataTable dt_asOrder = new DataTable();
+                                if (associateno != "")//两单关联
+                                {
+                                    dt_asOrder = DBMgr.GetDataTable("select * from list_order a where a.ISINVALID=0 and ASSOCIATENO='" + associateno + "' and code!='" + barcode + "'");
+                                }
                                 if (dt_asOrder == null)
                                 {
 
@@ -223,8 +224,8 @@ namespace ReadBarCode_Web
                                 + "',filepath='/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1)+"' where id=" + id, conn);
                             ot.Commit();
 
-                            File.Copy(direc_pdf + dr["FILEPATH"], direc_pdf + @"/FileUpload/file/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
-                            File.Delete(direc_pdf + dr["FILEPATH"]);
+                            fi.CopyTo(direc_pdf + @"/FileUpload/file/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
+                            fi.Delete();
 
                         }
                         catch (Exception ex)
