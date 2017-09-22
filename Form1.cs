@@ -19,6 +19,9 @@ namespace ReadBarCode_Web
     {
         string direc_pdf = ConfigurationManager.AppSettings["filedir"];
         string direc_img = ConfigurationManager.AppSettings["ImagePath"];
+        string UserName = ConfigurationManager.AppSettings["FTPUserName"].ToString();
+        string Password = ConfigurationManager.AppSettings["FTPPassword"].ToString();
+        System.Uri Uri = new Uri("ftp://" + ConfigurationManager.AppSettings["FTPServer"] + ":" + ConfigurationManager.AppSettings["FTPPortNO"]);
 
         public Form1()
         {
@@ -72,10 +75,17 @@ namespace ReadBarCode_Web
         {
             string sql = ""; string guid = ""; string barcode = ""; 
             DataTable dt = new DataTable(); string id = ""; string filepath = ""; string originalname = ""; string filesuffix = "";
-            string sql_insert = ""; DataTable dt_order = new DataTable(); string associateno = "";
+            string sql_insert = ""; DataTable dt_order = new DataTable(); string associateno = ""; string newfilepath = "";
+            string bakpath = direc_pdf + @"/FileUpload/filereconginze/bak/";//备份原始文件目录
 
             try
             {
+                FtpHelper ftp = new FtpHelper(Uri, UserName, Password);
+                if (!Directory.Exists(bakpath))
+                {
+                    Directory.CreateDirectory(bakpath);
+                }
+
                 sql = "select * from list_filerecoginze where status='未关联' order by times";
                 dt = DBMgr.GetDataTable(sql);
                 foreach (DataRow dr in dt.Rows)
@@ -85,11 +95,10 @@ namespace ReadBarCode_Web
                     //先置空
                     guid = ""; barcode = "";
                     id = ""; filepath = ""; originalname = ""; filesuffix = "";
-                    sql_insert = ""; dt_order.Clear(); associateno = "";
+                    sql_insert = ""; dt_order.Clear(); associateno = ""; newfilepath = "";
 
                     //赋值
-                    id = dr["ID"].ToString();
-                    filepath = dr["FILEPATH"].ToString();
+                    id = dr["ID"].ToString(); filepath = dr["FILEPATH"].ToString();
                     originalname = dr["FILENAME"].ToString(); filesuffix = originalname.Substring(originalname.LastIndexOf(".") + 1).ToUpper();
                     FileInfo fi = new FileInfo(direc_pdf + filepath);
 
@@ -156,8 +165,6 @@ namespace ReadBarCode_Web
                     }
 
                     //-------------------------------------------------识别成条码，关联到订单表
-                    associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString();
-
                     OracleConnection conn = null;
                     OracleTransaction ot = null;
                     conn = DBMgr.getOrclCon();
@@ -166,7 +173,9 @@ namespace ReadBarCode_Web
                         conn.Open();
                         ot = conn.BeginTransaction();
 
-                        associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString();
+                        associateno = dt_order.Rows[0]["ASSOCIATENO"].ToString(); 
+                        newfilepath = "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1);
+
                         if (associateno != "")//两单关联
                         {
                             sql_insert = @"insert into LIST_ATTACHMENT (id
@@ -176,7 +185,7 @@ namespace ReadBarCode_Web
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
                                                 ,'{6}','{7}')";
                             sql_insert = string.Format(sql_insert
-                                    , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
+                                    , newfilepath, originalname, "44", barcode, fi.Length, "订单文件"
                                     , filesuffix, dt_order.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
                             DBMgr.ExecuteNonQuery(sql_insert, conn);
 
@@ -203,7 +212,7 @@ namespace ReadBarCode_Web
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
                                                 ,'{6}','{7}')";
                                 sql_insert = string.Format(sql_insert
-                                        , "/44/" + dt_asOrder.Rows[0]["code"].ToString() + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", dt_asOrder.Rows[0]["code"].ToString(), fi.Length, "订单文件"
+                                        , newfilepath, originalname, "44", dt_asOrder.Rows[0]["code"].ToString(), fi.Length, "订单文件"
                                         , filesuffix, dt_asOrder.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
                                 DBMgr.ExecuteNonQuery(sql_insert, conn);
                             }
@@ -218,19 +227,22 @@ namespace ReadBarCode_Web
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
                                                 ,'{6}')";
                             sql_insert = string.Format(sql_insert
-                                    , "/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1), originalname, "44", barcode, fi.Length, "订单文件"
+                                    , newfilepath, originalname, "44", barcode, fi.Length, "订单文件"
                                     , filesuffix);
                             DBMgr.ExecuteNonQuery(sql_insert, conn);
                         }
 
                         //关联成功 ，文件挪到自动上传到文件服务器的目录，并删除原始目录的文件、修改原始路径为服务器新路径
                         DBMgr.ExecuteNonQuery("update list_filerecoginze set status='已关联',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString()
-                            + "',filepath='/44/" + barcode + "/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1) + "' where id=" + id, conn);
+                            + "',filepath='" + newfilepath + "' where id=" + id, conn);
                         ot.Commit();
 
-                        fi.CopyTo(direc_pdf + @"/FileUpload/file/" + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
-                        fi.Delete();
-
+                        bool res = ftp.UploadFile(direc_pdf + filepath, newfilepath, true);
+                        if (res)
+                        {
+                            fi.CopyTo(bakpath + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
+                            fi.Delete();
+                        }
                     }
                     catch (Exception ex)
                     {
