@@ -73,8 +73,8 @@ namespace ReadBarCode_Web
 
         private void barcode_toolKit_web(fn_share fn_share, string filename)
         {
-            string sql = ""; string guid = ""; string barcode = ""; 
-            DataTable dt = new DataTable(); string id = ""; string filepath = ""; string originalname = ""; string filesuffix = "";
+            string sql = ""; string guid = ""; string barcode = "";
+            DataTable dt = new DataTable(); string id = ""; string filepath = ""; string originalname = ""; string filesuffix = ""; string userid = ""; string username = "";
             string sql_insert = ""; DataTable dt_order = new DataTable(); string associateno = ""; string newfilepath = "";
             string bakpath = direc_pdf + @"/FileUpload/filereconginze/bak/";//备份原始文件目录
 
@@ -94,12 +94,14 @@ namespace ReadBarCode_Web
 
                     //先置空
                     guid = ""; barcode = "";
-                    id = ""; filepath = ""; originalname = ""; filesuffix = "";
+                    id = ""; filepath = ""; originalname = ""; filesuffix = ""; userid = ""; username = "";
                     sql_insert = ""; dt_order.Clear(); associateno = ""; newfilepath = "";
 
                     //赋值
                     id = dr["ID"].ToString(); filepath = dr["FILEPATH"].ToString();
                     originalname = dr["FILENAME"].ToString(); filesuffix = originalname.Substring(originalname.LastIndexOf(".") + 1).ToUpper();
+                    userid = dr["USERID"].ToString(); username = dr["USERNAME"].ToString();
+
                     FileInfo fi = new FileInfo(direc_pdf + filepath);
 
                     //---------------------------------------------------------------------------------------------------------------------
@@ -180,13 +182,13 @@ namespace ReadBarCode_Web
                         {
                             sql_insert = @"insert into LIST_ATTACHMENT (id
                                                 ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
-                                                ,filesuffix,IETYPE) 
+                                                ,filesuffix,IETYPE,uploaduserid,uploadusername) 
                                             values(List_Attachment_Id.Nextval
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
-                                                ,'{6}','{7}')";
+                                                ,'{6}','{7}','{8}','{9}')";
                             sql_insert = string.Format(sql_insert
                                     , newfilepath, originalname, "44", barcode, fi.Length, "订单文件"
-                                    , filesuffix, dt_order.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
+                                    , filesuffix, dt_order.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口", userid, username);
                             DBMgr.ExecuteNonQuery(sql_insert, conn);
 
                             DataTable dt_asOrder = new DataTable();
@@ -207,13 +209,13 @@ namespace ReadBarCode_Web
                             {
                                 sql_insert = @"insert into LIST_ATTACHMENT (id
                                                 ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
-                                                ,filesuffix,IETYPE) 
+                                                ,filesuffix,IETYPE,uploaduserid,uploadusername) 
                                             values(List_Attachment_Id.Nextval
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
-                                                ,'{6}','{7}')";
+                                                ,'{6}','{7}','{8}','{9}')";
                                 sql_insert = string.Format(sql_insert
                                         , newfilepath, originalname, "44", dt_asOrder.Rows[0]["code"].ToString(), fi.Length, "订单文件"
-                                        , filesuffix, dt_asOrder.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口");
+                                        , filesuffix, dt_asOrder.Rows[0]["BUSITYPE"].ToString() == "40" ? "仅出口" : "仅进口", userid, username);
                                 DBMgr.ExecuteNonQuery(sql_insert, conn);
                             }
 
@@ -222,13 +224,13 @@ namespace ReadBarCode_Web
                         {
                             sql_insert = @"insert into LIST_ATTACHMENT (id
                                                 ,filename,originalname,filetype,uploadtime,ordercode,sizes,filetypename
-                                                ,filesuffix) 
+                                                ,filesuffix,uploaduserid,uploadusername)  
                                             values(List_Attachment_Id.Nextval
                                                 ,'{0}','{1}','{2}',sysdate,'{3}','{4}','{5}'
-                                                ,'{6}')";
+                                                ,'{6}','{7}','{8}')";
                             sql_insert = string.Format(sql_insert
                                     , newfilepath, originalname, "44", barcode, fi.Length, "订单文件"
-                                    , filesuffix);
+                                    , filesuffix, userid, username);
                             DBMgr.ExecuteNonQuery(sql_insert, conn);
                         }
 
@@ -243,6 +245,8 @@ namespace ReadBarCode_Web
                             fi.CopyTo(bakpath + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
                             fi.Delete();
                         }
+
+                        //SubmitOrder.Submit(barcode, userid, username);//add 提交委托
                     }
                     catch (Exception ex)
                     {
