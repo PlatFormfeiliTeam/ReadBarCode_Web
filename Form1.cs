@@ -237,13 +237,21 @@ namespace ReadBarCode_Web
                         //关联成功 ，文件挪到自动上传到文件服务器的目录，并删除原始目录的文件、修改原始路径为服务器新路径
                         DBMgr.ExecuteNonQuery("update list_filerecoginze set status='已关联',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString()
                             + "',filepath='" + newfilepath + "' where id=" + id, conn);
-                        ot.Commit();
 
                         bool res = ftp.UploadFile(direc_pdf + filepath, newfilepath, true);
                         if (res)
                         {
+                            ot.Commit();
+
                             fi.CopyTo(bakpath + filepath.Substring(filepath.LastIndexOf(@"/") + 1));
                             fi.Delete();
+                        }
+                        else
+                        {
+                            ot.Rollback();
+
+                            DBMgr.ExecuteNonQuery("update list_filerecoginze set status='关联失败',ordercode='" + barcode + "',cusno='" + dt_order.Rows[0]["CUSNO"].ToString() + "' where id=" + id);
+                            fn_share.systemLog(filename, "异常，id:" + id + ",filepath:" + filepath + "\r\n识别条码失败：ftp上传失败\r\n");
                         }
 
                         //SubmitOrder.Submit(barcode, userid, username);//add 提交委托
